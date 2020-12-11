@@ -279,11 +279,11 @@ class ExpensiveOpsBppCached extends ExpensiveOps {
 
 @Slf4j
 @Configuration
-class CacheCAugmentation {
+class CacheAugmentation {
 	@Bean @Logged
 	public BeanPostProcessor cacheAugmentor() {
 		return new BeanPostProcessor() {
-			@Override @Logged
+			@Override
 			public Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException {
 				if (bean.getClass().isAnnotationPresent(WithCacheBpp.class)) {
 					log.debug("Wrapping in a proxy " + bean);
