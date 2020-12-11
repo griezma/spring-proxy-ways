@@ -1,4 +1,4 @@
-package griezma.proxyfairy;
+package griezma.proxyways;
 
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
@@ -158,19 +158,19 @@ class ExpensiveOps {
 @Aspect
 @Component
 class MyAspect {
-	@Around("execution( * *(..)) && within(griezma.proxyfairy.Facade)")
+	@Around("execution( * *(..)) && within(griezma.proxyways.Facade)")
 	public Object executeAroundWithinFacade(ProceedingJoinPoint jp) throws Throwable {
 		log.debug("Intercepted within Facade {}({})", jp.getSignature().getName(), Arrays.toString(jp.getArgs()));
 		return jp.proceed();
 	}
 
-	@Around("execution( * *(..)) && @annotation(griezma.proxyfairy.Logged)")
+	@Around("execution( * *(..)) && @annotation(griezma.proxyways.Logged)")
 	public Object executeAroundLogged(ProceedingJoinPoint jp) throws Throwable {
 		log.debug("Intercepted Logged {}({})", jp.getSignature().getName(), Arrays.toString(jp.getArgs()));
 		return jp.proceed();
 	}
 
-	@Around("execution( * *(..)) && @annotation(griezma.proxyfairy.Timed)")
+	@Around("execution( * *(..)) && @annotation(griezma.proxyways.Timed)")
 	public Object executeAroundTimed(ProceedingJoinPoint jp) throws Throwable {
 		log.debug("Intercepted Timed {}({})", jp.getSignature().getName(), Arrays.toString(jp.getArgs()));
 		long before = System.nanoTime();

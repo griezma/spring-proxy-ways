@@ -4,7 +4,7 @@ plugins {
 	id 'java'
 }
 
-group = 'giezma.proxyfairy'
+group = 'giezma.proxyways'
 version = '0.0.1-SNAPSHOT'
 sourceCompatibility = '11'
 

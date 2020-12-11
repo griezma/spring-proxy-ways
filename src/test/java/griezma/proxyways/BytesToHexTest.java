@@ -1,6 +1,6 @@
-package griezma.proxyfairy.proxyfairy;
+package griezma.proxyways;
 
-import griezma.proxyfairy.BytesToHex;
+import griezma.proxyways.BytesToHex;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;

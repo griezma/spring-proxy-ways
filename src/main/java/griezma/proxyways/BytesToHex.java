@@ -1,4 +1,4 @@
-package griezma.proxyfairy;
+package griezma.proxyways;
 
 public class BytesToHex {
     private static  final char[] HEX_MAP = "0123456789abcdef".toCharArray();
