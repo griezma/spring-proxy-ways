@@ -28,10 +28,9 @@ public class ClassProxy {
             public Object intercept(Object obj, Method method, Object[] args, MethodProxy methodProxy) throws Throwable {
                 log.debug("intercept {}({})", method.getName(), Arrays.toString(args));
                 var key = getCacheKey(method, args);
-                log.debug("cachekey: " + key);
-                return cache.computeIfAbsent(key, Unchecked.function(u -> method.invoke(obj, args)));
+                return cache.computeIfAbsent(key, Unchecked.function(u -> method.invoke(real, args)));
             }
         };
-        return (T)Enhancer.create(real.getClass(), callback);
+        return (T) Enhancer.create(real.getClass(), callback);
     }
 }

@@ -2,17 +2,27 @@ package griezma.proxyways;
 
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
+import lombok.With;
+import lombok.extern.java.Log;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.jooq.lambda.Unchecked;
+import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
 
 import java.lang.annotation.*;
 import java.math.BigInteger;
@@ -21,15 +31,17 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.util.Arrays;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @SpringBootApplication
 @EnableCaching
-public class ProxyfairyApplication {
+public class ProxywaysApplication {
 
 	public static void main(String[] args) {
-		log.info("running");
-		SpringApplication.run(ProxyfairyApplication.class, args);
+		log.debug("running");
+		SpringApplication.run(ProxywaysApplication.class, args);
 	}
 }
 
@@ -41,46 +53,60 @@ class Runner implements CommandLineRunner {
 	final ExpensiveOpsLogged opsLogged;
 	final ExpensiveOpsCached opsCached;
 
-	ExpensiveOps classProxyOps = ClassProxy.proxy(new ExpensiveOps());
+	@Autowired @WithCache
+	IExpensiveOps opsDecorated;
+
+	ExpensiveOps opsClassProxy = ClassProxy.proxy(new ExpensiveOps());
+
+	final ExpensiveOpsBppCached opsBppCached;
 
 	public void run(String... args) {
+		runOps(opsDecorated, "with cache decorator");
 		runOps(opsFacade, "with class interceptor");
 		runOps(opsLogged, "with method interceptor");
 		runOps(opsCached, "Cacheable");
-		//runOps(classProxyOps, "class proxy");
+		runOps(opsClassProxy, "class proxy");
+		runOps(opsBppCached, "Bean post processed proxy");
 	}
 
-	void runOps(ExpensiveOps ops, String description) {
+	void runOps(IExpensiveOps ops, String description) {
 		log.debug("\n\n=== Running {} ({}) ====\n", description, ops.getClass().getSimpleName());
 		log.debug("----CPU expensive");
 		long number = 1000000005721L;
-		log.info("{} is prime ?", number);
-		log.info("Got: {}\n", ops.isPrime(number));
-		log.info("{} is prime ?", number);
-		log.info("Got: {}\n", ops.isPrime(number));
-		log.info("{} is prime ?", number + 2);
-		log.info("Got: {}\n", ops.isPrime(number + 2));
+		log.debug("{} is prime ?", number);
+		log.debug("Got: {}\n", ops.isPrime(number));
+		log.debug("{} is prime ?", number);
+		log.debug("Got: {}\n", ops.isPrime(number));
+		log.debug("{} is prime ?", number + 2);
+		log.debug("Got: {}\n", ops.isPrime(number + 2));
 
-		log.info("----IO expensive");
+		log.debug("----IO expensive");
 		Path path = Paths.get("");
 
 		log.debug("Get files hash {}", path.toAbsolutePath().normalize());
-		log.info("MD5: {}", ops.hashAllFiles(path));
+		log.debug("MD5: {}", ops.hashAllFiles(path));
 		log.debug("Get files hash {}", path.toAbsolutePath().normalize());
-		log.info("MD5: {}", ops.hashAllFiles(path));
+		log.debug("MD5: {}", ops.hashAllFiles(path));
 
 		path = Paths.get("src");
 		log.debug("Get files hash {}", path.toAbsolutePath().normalize());
-		log.info("MD5: {}", ops.hashAllFiles(path));
+		log.debug("MD5: {}", ops.hashAllFiles(path));
 	}
 }
 
-@Slf4j
-class ExpensiveOps {
+interface IExpensiveOps {
+	boolean isPrime(long number);
+	String hashAllFiles(Path folder);
+}
 
+@Slf4j
+@Service @Primary
+class ExpensiveOps implements IExpensiveOps {
+
+	@Override
 	@Timed
 	public boolean isPrime(final long number) {
-		log.info("Compute isPrime({})", number);
+		log.debug("Compute isPrime({})", number);
 		long before = System.nanoTime();
 		try {
 			BigInteger n = BigInteger.valueOf(number);
@@ -111,14 +137,15 @@ class ExpensiveOps {
 			return true;
 		} finally {
 			long duration = System.nanoTime() - before;
-			log.debug("Inner duration isPrime: {}mms", duration / 1000);
+			log.debug("Inner duration isPrime: {}mu", duration / 1000);
 		}
 	}
 
+	@Override
 	@SneakyThrows
 	@Timed
 	public String hashAllFiles(Path folder) {
-		log.info("Compute hashAllFiles({})", folder);
+		log.debug("Compute hashAllFiles({})", folder);
 		long before = System.nanoTime();
 		try {
 			MessageDigest md = MessageDigest.getInstance("MD5");
@@ -133,8 +160,31 @@ class ExpensiveOps {
 			return BytesToHex.bytesToHex(md.digest());
 		} finally {
 			long duration = System.nanoTime() - before;
-			log.debug("Inner duration hashAllFiles(): {}mms", duration / 1000);
+			log.debug("Inner duration hashAllFiles(): {}mu", duration / 1000);
 		}
+	}
+}
+
+@Retention(RetentionPolicy.RUNTIME)
+@Qualifier
+@interface WithCache {}
+
+@Service @WithCache
+@RequiredArgsConstructor
+class ExpensiveOpsWithCache implements IExpensiveOps {
+
+	final ExpensiveOps delegate;
+
+	private final Map<Long, Boolean> primeCache = new ConcurrentHashMap<>();
+
+	@Override @Logged
+	public boolean isPrime(long number) {
+		return primeCache.computeIfAbsent(number, delegate::isPrime);
+	}
+
+	@Override
+	public String hashAllFiles(Path folder) {
+		return delegate.hashAllFiles(folder);
 	}
 }
 
@@ -157,7 +207,7 @@ class ExpensiveOps {
 @Slf4j
 @Aspect
 @Component
-class MyAspect {
+class MyAspects {
 	@Around("execution( * *(..)) && within(griezma.proxyways.Facade)")
 	public Object executeAroundWithinFacade(ProceedingJoinPoint jp) throws Throwable {
 		log.debug("Intercepted within Facade {}({})", jp.getSignature().getName(), Arrays.toString(jp.getArgs()));
@@ -176,7 +226,7 @@ class MyAspect {
 		long before = System.nanoTime();
 		Object result = jp.proceed();
 		long duration = System.nanoTime() - before;
-		log.debug("{}({}) took {}mms", jp.getSignature().getName(), Arrays.toString(jp.getArgs()), duration / 1_000);
+		log.debug("{}({}) took {}mu", jp.getSignature().getName(), Arrays.toString(jp.getArgs()), duration / 1_000);
 		return result;
 	}
 }
@@ -215,6 +265,34 @@ class ExpensiveOpsCached extends ExpensiveOps {
 	@Cacheable("files")
 	public String hashAllFiles(Path folder) {
 		return super.hashAllFiles(folder);
+	}
+}
+
+@Component
+@WithCacheBpp
+class ExpensiveOpsBppCached extends ExpensiveOps {
+}
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.TYPE)
+@interface WithCacheBpp {}
+
+@Slf4j
+@Configuration
+class CacheCAugmentation {
+	@Bean @Logged
+	public BeanPostProcessor cacheAugmentor() {
+		return new BeanPostProcessor() {
+			@Override @Logged
+			public Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException {
+				if (bean.getClass().isAnnotationPresent(WithCacheBpp.class)) {
+					log.debug("Wrapping in a proxy " + bean);
+					return ClassProxy.proxy(bean);
+				} else {
+					return bean;
+				}
+			}
+		};
 	}
 }
 
